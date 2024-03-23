@@ -2,8 +2,6 @@
 
 layout(location = 0) out vec4 color;
 
-// The vertice's texture sample.
-uniform sampler2D tex;
 
 // Blinn-phong properties.
 uniform vec3 lightPos;
@@ -30,9 +28,24 @@ float ShadowCalculation(vec4 lightSpacePos){
     float closestDepth = texture(shadowMap, projCoords.xy).r;
     // We can sample the ACTUAL depth at this point like this:
     float realDepth = projCoords.z;
-    // If the realDepth is greater than the closestDepth, the frag is in shadow.
-    // This feels like the opposite of what I would expect...
-    float shadow = realDepth > closestDepth ? 1.0 : 0.0;
+    // This bias helps with shadow acne.
+    // The use of the dot product here makes it so at extreme angles, our bias is still working and reasonable.
+    float bias = max(0.0001 * (1.0 - dot(fixedNorm, normalize(lightPos - fragPos))), 0.00001);
+
+    // Take an average of nearby shadows.
+    // This is called Perecentage-closer filtering,
+    // which results in softer shadows.
+    float shadow = 0;
+    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+    for(int i = -1; i <= 1; i++){
+        for(int j = -1; j <= 1; j++){
+            float loopDepth = texture(shadowMap, projCoords.xy + vec2(i, j) * texelSize).r;
+            // If the realDepth is greater than the closestDepth, the frag is in shadow.
+            // This feels like the opposite of what I would expect...
+            shadow += realDepth - bias > loopDepth ? 1.0 : 0.0;
+        }
+    }
+    shadow = shadow / 9.0;
     return shadow;
 }
 
@@ -43,7 +56,7 @@ void main()
     vec3 texColor = vec3(1,0.2,0.3);
     vec3 normal = normalize(fixedNorm);
     vec3 lightColor = vec3(1.f);
-    vec3 ambient = 0.2 * lightColor;
+    vec3 ambient = 0.4 * lightColor;
     // lambertian diffuse.
     vec3 lightDir = normalize(lightPos - fragPos);
     float diffusion = max(dot(lightDir, normal), 0.0);
